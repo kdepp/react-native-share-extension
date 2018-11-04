@@ -5,6 +5,7 @@
 #define URL_IDENTIFIER @"public.url"
 #define IMAGE_IDENTIFIER @"public.image"
 #define TEXT_IDENTIFIER (NSString *)kUTTypePlainText
+#define DICT_IDENTIFIER (NSString *)kUTTypePropertyList
 
 NSExtensionContext* extensionContext;
 
@@ -47,7 +48,7 @@ RCT_REMAP_METHOD(data,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self extractDataFromContext: extensionContext withCallback:^(NSString* val, NSString* contentType, NSException* err) {
+    [self extractDataFromContext: extensionContext withCallback:^(id val, NSString* contentType, NSException* err) {
         if(err) {
             reject(@"error", err.description, nil);
         } else {
@@ -59,8 +60,7 @@ RCT_REMAP_METHOD(data,
     }];
 }
 
-- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSString *value, NSString* contentType, NSException *exception))callback {
-    
+- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(id value, NSString* contentType, NSException *exception))callback {
     @try {
         NSExtensionItem *item = [context.inputItems firstObject];
         NSArray *attachments = item.attachments;
@@ -68,6 +68,7 @@ RCT_REMAP_METHOD(data,
         __block NSItemProvider *urlProvider = nil;
         __block NSItemProvider *imageProvider = nil;
         __block NSItemProvider *textProvider = nil;
+        __block NSItemProvider *dictProvider = nil;
 
         [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
             if([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
@@ -78,6 +79,9 @@ RCT_REMAP_METHOD(data,
                 *stop = YES;
             } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
+                *stop = YES;
+            } else if ([provider hasItemConformingToTypeIdentifier:DICT_IDENTIFIER]) {
+                dictProvider = provider;
                 *stop = YES;
             }
         }];
@@ -127,6 +131,15 @@ RCT_REMAP_METHOD(data,
                     callback(text, @"text/plain", nil);
                 }
             }];
+        } else if (dictProvider) {
+            [dictProvider loadItemForTypeIdentifier:DICT_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                NSDictionary *results = (NSDictionary *)item;
+                NSDictionary *data = (NSDictionary *)[results objectForKey:NSExtensionJavaScriptPreprocessingResultsKey];
+            
+                if(callback) {
+                    callback(data, @"application/json", nil);
+                }
+            }];
         } else {
             if(callback) {
                 callback(nil, nil, [NSException exceptionWithName:@"Error" reason:@"couldn't find provider" userInfo:nil]);
@@ -139,7 +152,5 @@ RCT_REMAP_METHOD(data,
         }
     }
 }
-
-
 
 @end
